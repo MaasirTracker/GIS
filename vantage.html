@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eef0ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10161b" media="(prefers-color-scheme: dark)">
+<title>Vantage: public-data map workbench</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&display=swap">
+<style>
+:root{
+  color-scheme: light dark;
+  --paper:#eef0ec; --panel:#fbfbf9; --ink:#17232b; --muted:#66757f; --line:#dadfd8; --hover:#f0f2ee;
+  --accent:#1d4ed8; --shadow:0 6px 24px rgba(15,25,32,.16);
+  --head:"Bricolage Grotesque","Avenir Next",system-ui,sans-serif;
+  --body:Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{--paper:#10161b; --panel:#171f26; --ink:#e7edf0; --muted:#93a1ab; --line:#27323b; --hover:#1e2830; --accent:#8fb0ff; --shadow:0 6px 24px rgba(0,0,0,.5);}
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{font:15px/1.4 var(--body);background:var(--paper);color:var(--ink);-webkit-text-size-adjust:100%;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+#app{position:fixed;inset:0;display:grid;grid-template-columns:348px 1fr}
+#panel{display:flex;flex-direction:column;min-height:0;background:var(--panel);border-right:1px solid var(--line);z-index:1200}
+#stage{position:relative;min-width:0}
+#map{position:absolute;inset:0;background:var(--paper)}
+
+#head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;padding:18px 18px 10px;position:relative}
+#head h1{margin:0;font:700 24px/1 var(--head);letter-spacing:-.01em}
+#status{margin:0;font-size:12.5px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.grab{display:none;position:absolute;top:7px;left:50%;width:38px;height:4px;margin-left:-19px;border-radius:2px;background:var(--line)}
+
+.filter{padding:0 14px 8px}
+.filter input{width:100%;height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--paper);outline-offset:0}
+#layers{flex:1;overflow-y:auto;overscroll-behavior:contain;padding-bottom:8px}
+
+.grp{border-top:1px solid var(--line)}
+.gh{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;width:100%;padding:13px 16px 9px;border:0;background:var(--panel);font:600 15px var(--head);text-align:left;cursor:pointer}
+.gn{flex:1}
+.gc{font:500 12px var(--body);color:var(--muted)}
+.chev{width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg) translate(-2px,-2px);transition:transform .15s}
+.grp.shut .chev{transform:rotate(-45deg)}
+.grp.shut .gl{display:none}
+.filtering .grp.shut .gl{display:block}
+
+.rw{position:relative;display:flex;align-items:stretch}
+.rw.on{background:rgba(0,0,0,.04);background:color-mix(in srgb,var(--c) 11%,transparent)}
+.rw.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c)}
+.row{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 16px 0 18px;border:0;background:none;text-align:left;cursor:pointer}
+.row:hover{background:var(--hover)}
+.sw{flex:none;width:14px;height:14px;border:2px solid var(--c);background:transparent}
+.sw.dot{border-radius:50%}
+.sw.sq{border-radius:3px}
+.sw.bar{width:16px;height:6px;border-radius:3px}
+.rw.on .sw{background:var(--c)}
+.nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.meta.bad{color:#c2410c;font-weight:600}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--c);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.rm{flex:none;width:44px;border:0;background:none;color:var(--muted);font-size:20px;cursor:pointer}
+
+.tools{display:flex;flex-direction:column;gap:10px;padding:12px 14px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel)}
+.sel{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.sel select{flex:1;height:38px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+.btns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.btn{height:40px;border-radius:10px;border:1px solid var(--line);background:var(--paper);cursor:pointer;font-weight:500}
+.btn:hover{background:var(--hover)}
+
+#search{position:absolute;z-index:1100;top:calc(12px + env(safe-area-inset-top));left:12px;right:68px;max-width:420px}
+#q{width:100%;height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel);box-shadow:var(--shadow)}
+#results{list-style:none;margin:6px 0 0;padding:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);max-height:40dvh;overflow:auto}
+#results button{display:block;width:100%;padding:10px;border:0;border-radius:8px;background:none;text-align:left;font-size:14px;cursor:pointer}
+#results button:hover{background:var(--hover)}
+#results .none{padding:10px;color:var(--muted);font-size:14px}
+.mapbtns{position:absolute;z-index:1100;top:calc(12px + env(safe-area-inset-top));right:12px;display:grid;gap:8px}
+.mapbtns button{width:44px;height:44px;display:grid;place-items:center;border-radius:12px;border:1px solid var(--line);background:var(--panel);box-shadow:var(--shadow);font:600 20px var(--body);cursor:pointer}
+.mapbtns svg{width:20px;height:20px}
+#toast{position:absolute;z-index:1100;left:50%;bottom:24px;transform:translate(-50%,8px);max-width:min(92%,440px);padding:10px 14px;border-radius:10px;background:var(--ink);color:var(--panel);font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
+.leaflet-container{font:inherit;background:var(--paper)}
+.leaflet-popup-content-wrapper{background:var(--panel);color:var(--ink);border-radius:12px;box-shadow:var(--shadow)}
+.leaflet-popup-tip{background:var(--panel)}
+.leaflet-popup-content{margin:14px 16px;font-size:14px}
+.leaflet-container a.leaflet-popup-close-button{color:var(--muted)}
+.leaflet-control-attribution{font-size:11px}
+.pop h3{margin:0 18px 2px 0;font:700 17px/1.2 var(--head)}
+.pop .sub{margin:0 0 8px;color:var(--muted);font-size:12.5px}
+.pop .thumb{display:block;width:100%;max-height:170px;object-fit:cover;border-radius:8px;margin:0 0 8px}
+.pop .tbl{max-height:210px;overflow:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.pop table{width:100%;border-collapse:collapse;font-size:12.5px}
+.pop th{width:38%;padding:4px 8px 4px 0;text-align:left;vertical-align:top;font:500 11.5px var(--mono);color:var(--muted);word-break:break-word}
+.pop td{padding:4px 0;vertical-align:top;word-break:break-word}
+.pop a{color:var(--accent)}
+.acts{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:13px}
+.acts button{padding:0;border:0;background:none;color:var(--accent);cursor:pointer;text-decoration:underline}
+.plane svg{display:block;filter:drop-shadow(0 0 1px rgba(0,0,0,.6))}
+
+dialog{width:min(92vw,420px);padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(10,16,20,.5)}
+dialog h2{margin:0 0 6px;font:700 20px var(--head)}
+dialog p{margin:0 0 14px;color:var(--muted);font-size:13.5px}
+.urlrow{display:flex;gap:8px;margin:12px 0 6px}
+.urlrow input{flex:1;min-width:0;height:40px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:var(--paper)}
+.dlgfoot{display:flex;justify-content:flex-end;margin-top:14px}
+dialog .btn{padding:0 16px}
+
+@media (max-width:720px){
+  #app{grid-template-columns:1fr}
+  #panel{position:fixed;left:0;right:0;bottom:0;height:min(74dvh,620px);border:1px solid var(--line);border-bottom:0;border-radius:18px 18px 0 0;box-shadow:var(--shadow);transform:translateY(calc(100% - 68px - env(safe-area-inset-bottom)));transition:transform .25s ease}
+  #panel.open{transform:none}
+  #head{height:68px;padding:20px 18px 0;cursor:pointer;flex:none}
+  .grab{display:block}
+  .leaflet-bottom{bottom:calc(68px + env(safe-area-inset-bottom))}
+  #zin,#zout{display:none}
+  #toast{bottom:calc(84px + env(safe-area-inset-bottom))}
+}
+@media (prefers-reduced-motion: reduce){
+  #panel,#toast{transition:none}
+  .spin{animation:none;border-top-color:var(--line);border-right-color:var(--c)}
+}
+</style>
+</head>
+<body>
+<noscript>Vantage needs JavaScript to draw the map.</noscript>
+<div id="app">
+  <aside id="panel" aria-label="Map layers">
+    <header id="head" tabindex="0" role="button" aria-expanded="false" aria-controls="layers">
+      <span class="grab" aria-hidden="true"></span>
+      <h1>Vantage</h1>
+      <p id="status" role="status" aria-live="polite">Loading map</p>
+    </header>
+    <div class="filter"><input id="lf" type="search" placeholder="Find a layer: cameras, red light, power" aria-label="Find a layer" autocomplete="off"></div>
+    <div id="layers"></div>
+    <footer class="tools">
+      <label class="sel"><span>Basemap</span><select id="base"></select></label>
+      <div class="btns">
+        <button class="btn" id="exp" type="button">Export</button>
+        <button class="btn" id="imp" type="button">Add data</button>
+        <button class="btn" id="clr" type="button">All off</button>
+      </div>
+    </footer>
+  </aside>
+  <main id="stage">
+    <div id="map"></div>
+    <form id="search" role="search" autocomplete="off">
+      <input id="q" type="search" placeholder="Search a place, address, or lat, lon" aria-label="Search a place, address, or coordinates" enterkeyhint="search">
+      <ul id="results" hidden></ul>
+    </form>
+    <div class="mapbtns">
+      <button id="zin" type="button" aria-label="Zoom in">+</button>
+      <button id="zout" type="button" aria-label="Zoom out">&minus;</button>
+      <button id="loc" type="button" aria-label="Go to my location"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+    </div>
+    <div id="toast" role="status"></div>
+  </main>
+</div>
+
+<dialog id="dlg">
+  <h2>Add your own data</h2>
+  <p>GeoJSON, or a CSV with lat and lon columns. Files are read in your browser and never uploaded.</p>
+  <button class="btn" id="pick" type="button" style="width:100%">Choose a file</button>
+  <input id="file" type="file" accept=".geojson,.json,.csv,.txt" hidden>
+  <div class="urlrow"><input id="url" type="url" placeholder="https://example.com/data.geojson" aria-label="Data URL"><button class="btn" id="urlgo" type="button" style="padding:0 14px">Add</button></div>
+  <p style="margin:0;font-size:12.5px">Links work only if the host allows cross-origin requests.</p>
+  <div class="dlgfoot"><button class="btn" id="dlgx" type="button">Close</button></div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+const daysAgo = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const isMobile = () => matchMedia('(max-width:720px)').matches;
+
+const LIMIT = 4000;
+const OVERPASS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter'
+];
+
+/* ---------- camera field-of-view helpers ---------- */
+const COMPASS = {N:0,NNE:22.5,NE:45,ENE:67.5,E:90,ESE:112.5,SE:135,SSE:157.5,S:180,SSW:202.5,SW:225,WSW:247.5,W:270,WNW:292.5,NW:315,NNW:337.5};
+function dirDeg(v) {
+  if (v == null) return null;
+  const s = String(v).trim().toUpperCase().split(/[;,]/)[0];
+  if (s in COMPASS) return COMPASS[s];
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? ((n % 360) + 360) % 360 : null;
+}
+function wedge(lat, lon, bearing, span, len = 35) {
+  const pts = [[lon, lat]];
+  for (let i = 0; i <= 6; i++) {
+    const b = (bearing - span / 2 + span * i / 6) * Math.PI / 180;
+    pts.push([lon + len * Math.sin(b) / (111320 * Math.cos(lat * Math.PI / 180)), lat + len * Math.cos(b) / 111320]);
+  }
+  pts.push([lon, lat]);
+  return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [pts] }, properties: { _fov: true } };
+}
+const camExtra = f => {
+  const p = f.properties;
+  const dir = dirDeg(p['camera:direction'] ?? p.direction);
+  if (dir == null || f.geometry.type !== 'Point') return [];
+  const [lon, lat] = f.geometry.coordinates;
+  const ang = Math.min(120, Math.max(20, parseFloat(p['camera:angle']) || 60));
+  return [wedge(lat, lon, dir, ang)];
+};
+const camSum = p => {
+  const dir = dirDeg(p['camera:direction'] ?? p.direction);
+  return [p.surveillance, p['surveillance:type'], p['camera:type'], p['camera:mount'], dir != null ? 'facing ' + Math.round(dir) + '°' : ''].filter(Boolean).join(', ');
+};
+
+/* ---------- feed helpers ---------- */
+async function getJSON(url, sig) {
+  const r = await fetch(url, { signal: sig });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+function circleFor(b) {
+  const c = L.latLng((b.s + b.n) / 2, (b.w + b.e) / 2);
+  const dist = c.distanceTo(L.latLng(b.n, b.e));
+  const R = Math.min(10000, Math.max(100, dist));
+  let covered = b;
+  if (dist > 10000) { const sq = c.toBounds(R * 1.4); covered = { s: sq.getSouth(), w: sq.getWest(), n: sq.getNorth(), e: sq.getEast() }; }
+  return { lat: c.lat.toFixed(5), lon: c.lng.toFixed(5), r: Math.round(R), covered };
+}
+const planeSVG = (hdg, c) => `<svg viewBox="0 0 24 24" width="22" height="22" style="transform:rotate(${hdg || 0}deg)"><path d="M12 2l2 7 8 4v2l-8-2-1 5 3 2v1.5L12 20l-4 1.5V20l3-2-1-5-8 2v-2l8-4z" fill="${c}" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+
+/* ---------- layer catalog ----------
+   geom: pt = points (areas shown at their centre), line = ways, mix = true geometry (polygons + points)
+   q:    Overpass QL selectors (bbox is appended). z: minimum zoom before data loads. */
+const CYC = '^(lane|track|shared_lane|opposite_lane|opposite_track|share_busway)$';
+const T = 'Transport', S = 'Surveillance & security', E = 'Emergency & health', I = 'Infrastructure & industry', P = 'Places & businesses', LV = 'Live & open data', IM = 'Imagery & overlays', U = 'Your data';
+
+const LAYERS = [
+  // Transport
+  { id:'bike', g:T, name:'Bike lanes & paths', c:'#16a34a', geom:'line', z:12, w:3, k:'bicycle cycling', q:['way["highway"="cycleway"]','way["cycleway"~"'+CYC+'"]','way["cycleway:left"~"'+CYC+'"]','way["cycleway:right"~"'+CYC+'"]','way["cycleway:both"~"'+CYC+'"]','way["bicycle_road"="yes"]'] },
+  { id:'bikepark', g:T, name:'Bike parking & rental', c:'#0d9488', geom:'pt', z:14, k:'bicycle', q:['nw["amenity"~"^(bicycle_parking|bicycle_rental|bicycle_repair_station)$"]'] },
+  { id:'signals', g:T, name:'Traffic lights', c:'#dc2626', geom:'pt', z:15, r:5, k:'red light stoplight signals', q:['node["highway"="traffic_signals"]'] },
+  { id:'stop', g:T, name:'Stop signs', c:'#ea580c', geom:'pt', z:16, r:4, q:['node["highway"="stop"]'] },
+  { id:'crossing', g:T, name:'Crosswalks', c:'#6b7fb3', geom:'pt', z:16, r:4, k:'pedestrian zebra', q:['node["highway"="crossing"]'] },
+  { id:'calming', g:T, name:'Speed bumps & traffic calming', c:'#ca8a04', geom:'pt', z:16, r:4, k:'hump', q:['node["traffic_calming"]'] },
+  { id:'bus', g:T, name:'Bus stops', c:'#2563eb', geom:'pt', z:14, r:4, q:['node["highway"="bus_stop"]'] },
+  { id:'stations', g:T, name:'Rail, metro & tram stops', c:'#4f46e5', geom:'pt', z:11, r:6, k:'subway train', q:['node["railway"~"^(station|halt|tram_stop|subway_entrance)$"]','node["public_transport"="station"]'] },
+  { id:'rail', g:T, name:'Rail & tram lines', c:'#78716c', geom:'line', z:12, w:2, k:'railway subway', q:['way["railway"~"^(rail|light_rail|subway|tram|monorail)$"]'] },
+  { id:'parking', g:T, name:'Parking lots & garages', c:'#0284c7', geom:'pt', z:14, q:['nw["amenity"="parking"]'] },
+  { id:'fuel', g:T, name:'Gas stations', c:'#f59e0b', geom:'pt', z:13, k:'fuel petrol', q:['nw["amenity"="fuel"]'] },
+  { id:'ev', g:T, name:'EV charging', c:'#65a30d', geom:'pt', z:13, k:'electric charger', q:['nw["amenity"="charging_station"]'] },
+  { id:'airports', g:T, name:'Airports & helipads', c:'#0ea5e9', geom:'pt', z:8, r:7, k:'aeroway heliport', q:['nw["aeroway"~"^(aerodrome|helipad|heliport)$"]'] },
+  { id:'ports', g:T, name:'Ports & ferry terminals', c:'#0891b2', geom:'pt', z:10, r:6, k:'harbour marina', q:['nw["amenity"="ferry_terminal"]','nw["harbour"="yes"]','nw["landuse"="port"]'] },
+  { id:'toll', g:T, name:'Toll booths', c:'#a16207', geom:'pt', z:12, q:['node["barrier"="toll_booth"]'] },
+
+  // Surveillance & security
+  { id:'cams', g:S, name:'Surveillance cameras', c:'#db2777', geom:'pt', z:13, r:5, k:'cctv security video camera', sum:camSum, extra:camExtra, title:p => p.name || p.operator || 'Camera',
+    q:['node["man_made"="surveillance"]["surveillance:type"!~"^(ALPR|webcam|red_light_camera|speed_camera)$"]'] },
+  { id:'alpr', g:S, name:'Plate readers (ALPR)', c:'#a21caf', geom:'pt', z:12, r:6, k:'license plate lpr flock', sum:camSum, extra:camExtra, title:p => p.name || p.operator || 'Plate reader', q:['node["surveillance:type"="ALPR"]'] },
+  { id:'speedcam', g:S, name:'Speed & red-light cameras', c:'#9f1239', geom:'pt', z:11, r:6, k:'red light enforcement radar', sum:camSum, extra:camExtra, title:p => p.name || 'Enforcement camera',
+    q:['node["highway"="speed_camera"]','node["enforcement"~"^(maxspeed|traffic_signals|average_speed|toll|check)$"]','node["surveillance:type"~"^(red_light_camera|speed_camera)$"]'] },
+  { id:'webcams', g:S, name:'Public webcams (OSM-tagged)', c:'#c026d3', geom:'pt', z:11, r:6, k:'live stream camera', q:['node["surveillance:type"="webcam"]','nw["contact:webcam"]'] },
+  { id:'police', g:S, name:'Police stations', c:'#1d4ed8', geom:'pt', z:12, r:6, q:['nw["amenity"="police"]'] },
+  { id:'prison', g:S, name:'Prisons', c:'#57534e', geom:'pt', z:9, r:6, k:'jail detention', q:['nw["amenity"="prison"]'] },
+  { id:'govt', g:S, name:'Courts & government offices', c:'#475569', geom:'pt', z:13, k:'courthouse town hall', q:['nw["amenity"~"^(courthouse|townhall)$"]','nw["office"="government"]'] },
+  { id:'embassy', g:S, name:'Embassies & consulates', c:'#0f766e', geom:'pt', z:9, r:6, k:'diplomatic', q:['nw["amenity"="embassy"]','nw["office"="diplomatic"]'] },
+  { id:'military', g:S, name:'Military sites', c:'#4d7c0f', geom:'mix', z:9, r:6, k:'base bunker barracks', q:['nw["military"]','way["landuse"="military"]'] },
+  { id:'border', g:S, name:'Border crossings', c:'#be123c', geom:'pt', z:9, r:6, k:'checkpoint customs', q:['node["barrier"="border_control"]'] },
+
+  // Emergency & health
+  { id:'hospital', g:E, name:'Hospitals', c:'#ef4444', geom:'pt', z:10, r:7, q:['nw["amenity"="hospital"]'] },
+  { id:'clinic', g:E, name:'Clinics & pharmacies', c:'#f87171', geom:'pt', z:14, r:4, k:'doctor', q:['nw["amenity"~"^(clinic|doctors|pharmacy)$"]'] },
+  { id:'fire', g:E, name:'Fire stations', c:'#f97316', geom:'pt', z:12, r:6, q:['nw["amenity"="fire_station"]'] },
+  { id:'aed', g:E, name:'Defibrillators (AED)', c:'#10b981', geom:'pt', z:14, r:4, q:['node["emergency"="defibrillator"]'] },
+  { id:'hydrant', g:E, name:'Fire hydrants', c:'#3b82f6', geom:'pt', z:17, r:4, q:['node["emergency"="fire_hydrant"]'] },
+  { id:'ephone', g:E, name:'Emergency phones', c:'#e11d48', geom:'pt', z:13, r:4, q:['node["emergency"="phone"]'] },
+
+  // Infrastructure & industry
+  { id:'powerline', g:I, name:'Power lines', c:'#eab308', geom:'line', z:11, w:2, k:'electric grid', q:['way["power"~"^(line|minor_line)$"]'] },
+  { id:'powersite', g:I, name:'Substations & power plants', c:'#d97706', geom:'mix', z:10, r:6, k:'electric', q:['nw["power"~"^(substation|plant)$"]'] },
+  { id:'wind', g:I, name:'Wind turbines', c:'#22b8cf', geom:'pt', z:10, r:4, q:['node["generator:source"="wind"]'] },
+  { id:'solar', g:I, name:'Solar generators', c:'#fbbf24', geom:'pt', z:12, r:4, q:['nw["generator:source"="solar"]'] },
+  { id:'masts', g:I, name:'Cell towers & masts', c:'#8b5cf6', geom:'pt', z:12, r:5, k:'antenna telecom communication', q:['node["man_made"~"^(mast|tower)$"]["tower:type"="communication"]','node["man_made"="communications_tower"]'] },
+  { id:'dc', g:I, name:'Data centers & telecom sites', c:'#6366f1', geom:'pt', z:10, r:6, q:['nw["telecom"="data_center"]','nw["building"="data_center"]'] },
+  { id:'water', g:I, name:'Water towers & treatment', c:'#0ea5e9', geom:'pt', z:12, r:5, k:'wastewater utility', q:['nw["man_made"~"^(water_tower|water_works|wastewater_plant)$"]'] },
+  { id:'pipeline', g:I, name:'Pipelines', c:'#92400e', geom:'line', z:9, w:2, q:['way["man_made"="pipeline"]'] },
+  { id:'industrial', g:I, name:'Industrial sites', c:'#64748b', geom:'mix', z:12, r:4, k:'factory works', q:['way["landuse"="industrial"]','nw["man_made"="works"]'] },
+  { id:'construction', g:I, name:'Construction sites', c:'#f59e0b', geom:'mix', z:13, r:4, q:['way["landuse"="construction"]','nw["building"="construction"]'] },
+  { id:'lamps', g:I, name:'Street lights', c:'#facc15', geom:'pt', z:17, r:3, q:['node["highway"="street_lamp"]'] },
+
+  // Places & businesses
+  { id:'shops', g:P, name:'Shops', c:'#a855f7', geom:'pt', z:15, r:4, q:['nw["shop"]'] },
+  { id:'food', g:P, name:'Food & drink', c:'#f97316', geom:'pt', z:15, r:4, k:'restaurant cafe bar pub', q:['nw["amenity"~"^(restaurant|cafe|fast_food|bar|pub)$"]'] },
+  { id:'banks', g:P, name:'Banks & ATMs', c:'#059669', geom:'pt', z:15, r:4, q:['nw["amenity"~"^(bank|atm)$"]'] },
+  { id:'hotels', g:P, name:'Hotels & lodging', c:'#ec4899', geom:'pt', z:14, r:5, q:['nw["tourism"~"^(hotel|motel|hostel|guest_house)$"]'] },
+  { id:'schools', g:P, name:'Schools & universities', c:'#0ea5e9', geom:'pt', z:13, r:5, q:['nw["amenity"~"^(school|university|college)$"]'] },
+  { id:'worship', g:P, name:'Places of worship', c:'#7c3aed', geom:'pt', z:14, r:5, q:['nw["amenity"="place_of_worship"]'] },
+  { id:'sights', g:P, name:'Attractions & historic sites', c:'#d946ef', geom:'pt', z:14, r:5, k:'museum landmark', q:['nw["tourism"~"^(attraction|museum|viewpoint|artwork)$"]','nw["historic"]'] },
+
+  // Live & open data (non-OSM)
+  { id:'quakes', g:LV, name:'Earthquakes, past 7 days (USGS)', c:'#ef4444', type:'feed', geom:'pt', global:true, k:'seismic',
+    pt:(f, ll) => L.circleMarker(ll, { radius: 3 + (f.properties.magnitude || 2) * 2.2, color:'#fff', weight:1, fillColor:'#ef4444', fillOpacity:.6 }),
+    title:p => 'M' + p.magnitude + ' earthquake',
+    load: async (b, sig) => {
+      const j = await getJSON('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson', sig);
+      return { features: j.features.map(f => ({ type:'Feature', geometry:{ type:'Point', coordinates:f.geometry.coordinates.slice(0, 2) },
+        properties:{ magnitude:f.properties.mag, place:f.properties.place, time_utc:new Date(f.properties.time).toISOString().replace('T', ' ').slice(0, 16), depth_km:f.geometry.coordinates[2], detail:f.properties.url } })) };
+    } },
+  { id:'eonet', g:LV, name:'Wildfires, storms & volcanoes (NASA)', c:'#f97316', type:'feed', geom:'mix', global:true, r:6, k:'disaster event hazard eonet',
+    load: async (b, sig) => {
+      const j = await getJSON('https://eonet.gsfc.nasa.gov/api/v3/events/geojson?status=open&limit=300', sig);
+      return { features: (j.features || []).filter(f => f.geometry).map(f => { const p = f.properties || {};
+        return { type:'Feature', geometry:f.geometry, properties:{ title:p.title, category:(p.categories || []).map(c => c.title).join(', '), date:p.date, magnitude:p.magnitudeValue != null ? p.magnitudeValue + ' ' + (p.magnitudeUnit || '') : undefined, link:p.link, source:(p.sources && p.sources[0] && p.sources[0].url) || undefined } }; }) };
+    } },
+  { id:'aircraft', g:LV, name:'Aircraft in flight (OpenSky)', c:'#0ea5e9', type:'feed', geom:'pt', z:7, refresh:true, k:'flights adsb planes',
+    pt:(f, ll) => L.marker(ll, { icon:L.divIcon({ className:'plane', html:planeSVG(f.properties.heading, '#0ea5e9'), iconSize:[22, 22], iconAnchor:[11, 11] }) }),
+    title:p => (p.callsign || p.icao24 || 'Aircraft'),
+    load: async (b, sig) => {
+      const j = await getJSON(`https://opensky-network.org/api/states/all?lamin=${b.s.toFixed(3)}&lomin=${b.w.toFixed(3)}&lamax=${b.n.toFixed(3)}&lomax=${b.e.toFixed(3)}`, sig);
+      const st = (j.states || []).filter(s => s[5] != null && s[6] != null);
+      return { capped: st.length > 800, features: st.slice(0, 800).map(s => ({ type:'Feature', geometry:{ type:'Point', coordinates:[s[5], s[6]] },
+        properties:{ callsign:(s[1] || '').trim(), icao24:s[0], country:s[2], altitude_m:Math.round(s[13] ?? s[7] ?? 0), speed_kts:s[9] != null ? Math.round(s[9] * 1.944) : undefined, heading:s[10] != null ? Math.round(s[10]) : 0, squawk:s[14], on_ground:s[8], track:'https://globe.adsbexchange.com/?icao=' + s[0] } })) };
+    } },
+  { id:'wiki', g:LV, name:'Wikipedia articles nearby', c:'#64748b', type:'feed', geom:'pt', z:12, r:4, k:'wikipedia geotagged',
+    load: async (b, sig) => {
+      const c = circleFor(b);
+      const j = await getJSON(`https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=geosearch&gscoord=${c.lat}%7C${c.lon}&gsradius=${c.r}&gslimit=300`, sig);
+      const r = (j.query && j.query.geosearch) || [];
+      return { covered:c.covered, capped:r.length >= 300, features:r.map(x => ({ type:'Feature', geometry:{ type:'Point', coordinates:[x.lon, x.lat] }, properties:{ title:x.title, article:'https://en.wikipedia.org/?curid=' + x.pageid } })) };
+    } },
+  { id:'commons', g:LV, name:'Geotagged photos (Wikimedia Commons)', c:'#e11d48', type:'feed', geom:'pt', z:14, r:5, k:'images pictures street-level',
+    load: async (b, sig) => {
+      const c = circleFor(b);
+      const j = await getJSON(`https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggscoord=${c.lat}%7C${c.lon}&ggsradius=${c.r}&ggslimit=50&ggsnamespace=6&prop=coordinates%7Cimageinfo&colimit=50&iiprop=url&iiurlwidth=300`, sig);
+      const pages = Object.values((j.query && j.query.pages) || {}).filter(p => p.coordinates && p.coordinates[0]);
+      return { covered:c.covered, capped:pages.length >= 50, features:pages.map(p => ({ type:'Feature', geometry:{ type:'Point', coordinates:[p.coordinates[0].lon, p.coordinates[0].lat] },
+        properties:{ title:p.title.replace(/^File:/, ''), file_page:p.imageinfo && p.imageinfo[0] && p.imageinfo[0].descriptionurl, _thumb:p.imageinfo && p.imageinfo[0] && p.imageinfo[0].thumburl } })) };
+    } },
+
+  // Imagery & overlays (tile layers)
+  { id:'viirs', g:IM, name:'NASA daily satellite image', c:'#38bdf8', type:'tile', k:'viirs true color',
+    url:() => `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${daysAgo(1)}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, opts:{ maxNativeZoom:9, opacity:.92, attribution:'Imagery NASA GIBS' } },
+  { id:'fires', g:IM, name:'NASA fire hotspots, past day', c:'#ef4444', type:'tile', k:'thermal wildfire viirs',
+    url:() => `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_All/default/${daysAgo(1)}/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png`, opts:{ maxNativeZoom:8, attribution:'NASA FIRMS / GIBS' } },
+  { id:'night', g:IM, name:'Night lights (NASA Black Marble)', c:'#fbbf24', type:'tile', k:'darkness electricity',
+    url:() => 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlackMarble_2016/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png', opts:{ maxNativeZoom:8, opacity:.85, attribution:'NASA Black Marble' } },
+  { id:'orm', g:IM, name:'Railway detail (OpenRailwayMap)', c:'#78716c', type:'tile', k:'signals tracks',
+    url:() => 'https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png', opts:{ subdomains:'abc', maxNativeZoom:19, attribution:'© OpenRailwayMap' } },
+  { id:'cycling', g:IM, name:'Cycling routes (Waymarked Trails)', c:'#16a34a', type:'tile', k:'bike routes',
+    url:() => 'https://tile.waymarkedtrails.org/cycling/{z}/{x}/{y}.png', opts:{ maxNativeZoom:18, attribution:'© Waymarked Trails' } },
+  { id:'sea', g:IM, name:'Sea marks (OpenSeaMap)', c:'#0891b2', type:'tile', k:'nautical buoys lighthouses',
+    url:() => 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', opts:{ maxNativeZoom:18, attribution:'© OpenSeaMap' } }
+];
+LAYERS.forEach(l => { l.type = l.type || 'op'; });
+
+const BASEMAPS = {
+  light:   { name:'Light',       url:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', o:{ subdomains:'abcd', maxNativeZoom:20, attribution:'© OpenStreetMap contributors © CARTO' } },
+  dark:    { name:'Dark',        url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',  o:{ subdomains:'abcd', maxNativeZoom:20, attribution:'© OpenStreetMap contributors © CARTO' } },
+  streets: { name:'Streets',     url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',                 o:{ maxNativeZoom:19, attribution:'© OpenStreetMap contributors' } },
+  sat:     { name:'Satellite',   url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', o:{ maxNativeZoom:19, attribution:'Imagery © Esri, Maxar, Earthstar Geographics' } },
+  topo:    { name:'Topographic', url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',               o:{ subdomains:'abc', maxNativeZoom:17, attribution:'© OpenStreetMap contributors, SRTM, © OpenTopoMap' } }
+};
+
+/* ---------- state ---------- */
+const state = { on: new Set(), base: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' };
+const collapsed = new Set([P, LV, IM, E, I]);
+const RT = {};
+let uCount = 0;
+const mkRT = d => { RT[d.id] = { def:d, group:L.layerGroup(), features:[], count:0, busy:false, err:null, loaded:null, capped:false, loadedZ:0, loadedAt:0, ctl:null, tooFar:false, tile:null }; };
+
+/* ---------- map ---------- */
+const map = L.map('map', { zoomControl:false, preferCanvas:true, maxZoom:19, minZoom:2, worldCopyJump:true, zoomSnap:1 });
+map.createPane('ovl').style.zIndex = 250;
+map.attributionControl.setPrefix(false);
+map.attributionControl.addAttribution('Data © OpenStreetMap contributors via Overpass API');
+let baseLayer = null;
+function setBase(k) {
+  if (!BASEMAPS[k]) k = 'light';
+  state.base = k;
+  if (baseLayer) map.removeLayer(baseLayer);
+  const b = BASEMAPS[k];
+  baseLayer = L.tileLayer(b.url, { ...b.o, maxZoom:19 }).addTo(map);
+  baseLayer.bringToBack();
+  $('#base').value = k;
+}
+
+/* ---------- Overpass ---------- */
+const jobs = []; let running = 0;
+function enqueue(fn) {
+  return new Promise((res, rej) => { jobs.push({ fn, res, rej }); pump(); });
+}
+function pump() {
+  while (running < 2 && jobs.length) {
+    const j = jobs.shift(); running++;
+    j.fn().then(j.res, j.rej).finally(() => { running--; pump(); });
+  }
+}
+async function overpass(query, sig) {
+  let last;
+  for (const url of OVERPASS) {
+    try {
+      const r = await fetch(url, { method:'POST', body:'data=' + encodeURIComponent(query), headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, signal:sig });
+      if (!r.ok) throw new Error('Overpass returned ' + r.status);
+      return await r.json();
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      last = e;
+    }
+  }
+  throw last || new Error('Overpass unreachable');
+}
+function buildQuery(d, b) {
+  const bbox = `(${b.s.toFixed(5)},${b.w.toFixed(5)},${b.n.toFixed(5)},${b.e.toFixed(5)})`;
+  const body = d.q.map(s => s + bbox + ';').join('');
+  const out = d.geom === 'pt' ? `out body center qt ${LIMIT};` : `out body geom qt ${LIMIT};`;
+  return `[out:json][timeout:30];(${body});${out}`;
+}
+function osmToFeatures(d, els) {
+  const feats = [];
+  for (const el of els) {
+    const props = Object.assign({}, el.tags || {}, { _osm: el.type + '/' + el.id });
+    let geometry = null;
+    if (el.type === 'node' && el.lat != null) geometry = { type:'Point', coordinates:[el.lon, el.lat] };
+    else if (d.geom === 'pt' && el.center) geometry = { type:'Point', coordinates:[el.center.lon, el.center.lat] };
+    else if (el.type === 'way' && el.geometry && el.geometry.length > 1) {
+      const co = el.geometry.map(p => [p.lon, p.lat]);
+      const a = co[0], z = co[co.length - 1];
+      const closed = co.length > 3 && a[0] === z[0] && a[1] === z[1];
+      geometry = (d.geom === 'mix' && closed) ? { type:'Polygon', coordinates:[co] } : { type:'LineString', coordinates:co };
+    } else if (el.center) geometry = { type:'Point', coordinates:[el.center.lon, el.center.lat] };
+    if (!geometry) continue;
+    const f = { type:'Feature', geometry, properties:props };
+    if (d.extra) feats.push(...d.extra(f));
+    feats.push(f);
+  }
+  return feats;
+}
+async function overpassLayer(d, b, ctl) {
+  if (ctl.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+  const data = await overpass(buildQuery(d, b), ctl.signal);
+  const els = data.elements || [];
+  if (data.remark && !els.length && /error|timed out|out of memory/i.test(data.remark)) throw new Error('Overpass is busy');
+  return { features: osmToFeatures(d, els), capped: els.length >= LIMIT };
+}
+
+/* ---------- loading & rendering ---------- */
+const toB = lb => ({ s:lb.getSouth(), w:lb.getWest(), n:lb.getNorth(), e:lb.getEast() });
+const padB = (lb, f) => { const b = toB(lb), dy = (b.n - b.s) * f, dx = (b.e - b.w) * f;
+  return { s:Math.max(-85, b.s - dy), w:Math.max(-180, b.w - dx), n:Math.min(85, b.n + dy), e:Math.min(180, b.e + dx) }; };
+const within = (o, lb) => { const b = toB(lb); return b.s >= o.s && b.w >= o.w && b.n <= o.n && b.e <= o.e; };
+
+function ensure(rt, force) {
+  const d = rt.def;
+  if (!state.on.has(d.id) || d.type === 'tile' || d.type === 'static') return;
+  const z = map.getZoom();
+  if (d.z && z < d.z) { rt.tooFar = true; updateRow(rt); status(); return; }
+  rt.tooFar = false;
+  if (d.global) {
+    if (!force && rt.loadedAt && Date.now() - rt.loadedAt < 300000) return;
+    return load(rt);
+  }
+  if (!force && rt.loaded && within(rt.loaded, map.getBounds()) && !(rt.capped && z > rt.loadedZ)) return;
+  load(rt);
+}
+async function load(rt) {
+  const d = rt.def;
+  if (rt.ctl) rt.ctl.abort();
+  const ctl = new AbortController(); rt.ctl = ctl;
+  const timer = setTimeout(() => { ctl.timedOut = true; ctl.abort(); }, 45000);
+  rt.busy = true; rt.err = null; updateRow(rt); status();
+  const b = padB(map.getBounds(), 0.25), z = map.getZoom();
+  try {
+    const res = await (d.load ? d.load(b, ctl.signal) : enqueue(() => overpassLayer(d, b, ctl)));
+    if (ctl.signal.aborted && !ctl.timedOut) return;
+    rt.features = res.features; rt.capped = !!res.capped; rt.loaded = res.covered || b; rt.loadedZ = z; rt.loadedAt = Date.now();
+    render(rt);
+  } catch (e) {
+    if (ctl.signal.aborted && !ctl.timedOut) return;
+    rt.err = ctl.timedOut ? 'timed out' : (e.message || 'failed');
+    toast(`${d.name}: ${rt.err}. Pan or zoom to try again.`);
+  } finally {
+    clearTimeout(timer);
+    if (rt.ctl === ctl) { rt.busy = false; rt.ctl = null; }
+    updateRow(rt); status();
+  }
+}
+function render(rt) {
+  const d = rt.def;
+  rt.group.clearLayers();
+  const gj = L.geoJSON({ type:'FeatureCollection', features:rt.features }, {
+    pointToLayer: (f, ll) => d.pt ? d.pt(f, ll) : L.circleMarker(ll, { radius:d.r || 5, color:'#fff', weight:1.25, fillColor:d.c, fillOpacity:.95 }),
+    style: f => f.properties._fov
+      ? { color:d.c, weight:1, opacity:.7, fillColor:d.c, fillOpacity:.2, interactive:false }
+      : f.geometry.type === 'Point' || f.geometry.type === 'MultiPoint'
+        ? {}
+        : (/Polygon/.test(f.geometry.type)
+            ? { color:d.c, weight:1.5, opacity:.9, fillColor:d.c, fillOpacity:.2 }
+            : { color:d.c, weight:d.w || 3, opacity:.9, lineCap:'round', lineJoin:'round' }),
+    onEachFeature: (f, l) => { if (!f.properties._fov) l.on('click', e => openPopup(d, f, e.latlng)); }
+  });
+  rt.group.addLayer(gj);
+  rt.count = rt.features.reduce((n, f) => n + (f.properties._fov ? 0 : 1), 0);
+}
+
+/* ---------- popups ---------- */
+function fmt(v) {
+  if (v && typeof v === 'object') v = JSON.stringify(v);
+  const s = String(v);
+  if (/^https?:\/\//i.test(s)) return `<a href="${esc(s)}" target="_blank" rel="noopener noreferrer">${esc(s.replace(/^https?:\/\/(www\.)?/i, '').slice(0, 42))}</a>`;
+  return esc(s);
+}
+function linkSet(la, lo) {
+  return `<a href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${la},${lo}" target="_blank" rel="noopener">Street View</a>`
+    + `<a href="https://www.mapillary.com/app/?lat=${la}&lng=${lo}&z=17" target="_blank" rel="noopener">Mapillary</a>`
+    + `<a href="https://www.google.com/maps/search/?api=1&query=${la},${lo}" target="_blank" rel="noopener">Google Maps</a>`
+    + `<button type="button" data-copy="${la}, ${lo}">Copy ${la}, ${lo}</button>`;
+}
+function popupHTML(d, f, ll) {
+  const p = f.properties || {};
+  const title = (d.title ? d.title(p) : (p.name || p['name:en'] || p.title || p.brand || p.operator)) || d.name;
+  const sum = d.sum ? d.sum(p) : '';
+  const rows = Object.keys(p).filter(k => k[0] !== '_' && p[k] !== undefined && p[k] !== '').slice(0, 50)
+    .map(k => `<tr><th>${esc(k)}</th><td>${fmt(p[k])}</td></tr>`).join('');
+  const la = ll.lat.toFixed(6), lo = ll.lng.toFixed(6);
+  const osm = p._osm ? `<a href="https://www.openstreetmap.org/${esc(p._osm)}" target="_blank" rel="noopener">OSM record</a>` : '';
+  const thumb = p._thumb ? `<a href="${esc(p.file_page || p._thumb)}" target="_blank" rel="noopener"><img class="thumb" src="${esc(p._thumb)}" alt="" loading="lazy"></a>` : '';
+  return `<div class="pop"><h3>${esc(title)}</h3><p class="sub">${esc(d.name)}${sum ? ', ' + esc(sum) : ''}</p>${thumb}${rows ? `<div class="tbl"><table>${rows}</table></div>` : ''}<div class="acts">${osm}${linkSet(la, lo)}</div></div>`;
+}
+function openPopup(d, f, ll) {
+  const g = f.geometry;
+  if (g.type === 'Point') ll = L.latLng(g.coordinates[1], g.coordinates[0]);
+  L.popup({ maxWidth:320, minWidth:230, autoPanPadding:[24, 96] }).setLatLng(ll).setContent(popupHTML(d, f, ll)).openOn(map);
+}
+
+/* ---------- layer list UI ---------- */
+function rowHTML(d) {
+  const shape = d.type === 'tile' ? 'sq' : d.geom === 'line' ? 'bar' : d.geom === 'mix' ? 'sq' : 'dot';
+  const tip = d.z ? `Loads at zoom ${d.z} and closer` : '';
+  return `<div class="rw" data-id="${esc(d.id)}" style="--c:${d.c}"><button class="row" type="button" aria-pressed="false" data-id="${esc(d.id)}" title="${tip}"><i class="sw ${shape}"></i><span class="nm">${esc(d.name)}</span><span class="meta"></span></button>${d.type === 'static' ? `<button class="rm" type="button" data-rm="${esc(d.id)}" aria-label="Remove ${esc(d.name)}">×</button>` : ''}</div>`;
+}
+function buildList() {
+  const groups = [...new Set(LAYERS.map(l => l.g))];
+  $('#layers').innerHTML = groups.map(g => {
+    const shut = collapsed.has(g);
+    return `<section class="grp${shut ? ' shut' : ''}" data-g="${esc(g)}"><button class="gh" type="button" aria-expanded="${!shut}"><i class="chev"></i><span class="gn">${esc(g)}</span><span class="gc"></span></button><div class="gl">${LAYERS.filter(l => l.g === g).map(rowHTML).join('')}</div></section>`;
+  }).join('');
+  LAYERS.forEach(l => updateRow(RT[l.id]));
+  updateGroups();
+}
+function updateRow(rt) {
+  const d = rt.def, el = $(`.rw[data-id="${CSS.escape(d.id)}"]`);
+  if (!el) return;
+  const on = state.on.has(d.id);
+  el.classList.toggle('on', on);
+  $('.row', el).setAttribute('aria-pressed', on);
+  const m = $('.meta', el);
+  m.className = 'meta'; m.title = '';
+  if (!on) m.textContent = '';
+  else if (rt.busy) m.innerHTML = '<span class="spin"></span>';
+  else if (rt.err) { m.className = 'meta bad'; m.textContent = 'retry'; m.title = rt.err; }
+  else if (rt.tooFar) m.textContent = 'zoom ' + d.z + '+';
+  else if (d.type === 'tile') m.textContent = '';
+  else if (rt.loaded || rt.loadedAt || d.type === 'static') m.textContent = rt.count + (rt.capped ? '+' : '');
+  else m.textContent = '';
+}
+function updateGroups() {
+  document.querySelectorAll('.grp').forEach(g => {
+    const n = [...g.querySelectorAll('.rw')].filter(r => state.on.has(r.dataset.id)).length;
+    $('.gc', g).textContent = n ? n + ' on' : '';
+  });
+}
+function status() {
+  const on = [...state.on].map(id => RT[id]).filter(Boolean);
+  const loading = on.filter(r => r.busy).length, far = on.filter(r => r.tooFar).length;
+  $('#status').textContent = `Zoom ${map.getZoom()}, ${on.length} layer${on.length === 1 ? '' : 's'} on` + (loading ? `, loading ${loading}` : '') + (far ? `, ${far} need a closer zoom` : '');
+}
+
+/* ---------- toggling ---------- */
+function setOn(id, on) {
+  const rt = RT[id]; if (!rt) return;
+  const d = rt.def;
+  if (on) {
+    state.on.add(id);
+    if (d.type === 'tile') {
+      if (!rt.tile) rt.tile = L.tileLayer(d.url(), Object.assign({ pane:'ovl', maxZoom:19 }, d.opts));
+      rt.tile.addTo(map);
+    } else {
+      rt.group.addTo(map);
+      if (d.type === 'static') { if (!rt.features.length) rt.features = d.fc; render(rt); }
+      else { rt.err = null; ensure(rt); }
+    }
+  } else {
+    state.on.delete(id);
+    if (rt.ctl) rt.ctl.abort();
+    rt.busy = false; rt.tooFar = false;
+    if (d.type === 'tile') { if (rt.tile) map.removeLayer(rt.tile); } else map.removeLayer(rt.group);
+  }
+  updateRow(rt); updateGroups(); status(); saveHash();
+}
+
+/* ---------- URL hash ---------- */
+function saveHash() {
+  const c = map.getCenter();
+  const ids = [...state.on].filter(id => RT[id].def.type !== 'static').join(',');
+  history.replaceState(null, '', `#map=${map.getZoom()}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}&l=${ids}&b=${state.base}`);
+}
+function readHash() {
+  const o = {};
+  location.hash.slice(1).split('&').forEach(kv => { const i = kv.indexOf('='); if (i > 0) o[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); });
+  return o;
+}
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 4200);
+}
+
+/* ---------- import / export ---------- */
+function parseCSV(t) {
+  const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ',' || c === '\t' || c === ';') { row.push(f); f = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && t[i + 1] === '\n') i++; row.push(f); f = ''; if (row.length > 1 || row[0] !== '') rows.push(row); row = []; }
+    else f += c;
+  }
+  row.push(f); if (row.length > 1 || row[0] !== '') rows.push(row);
+  return rows;
+}
+function textToFC(text) {
+  const t = text.trim();
+  if (t[0] === '{' || t[0] === '[') {
+    const j = JSON.parse(t);
+    if (j.type === 'FeatureCollection') return j;
+    if (j.type === 'Feature') return { type:'FeatureCollection', features:[j] };
+    if (j.type && j.coordinates) return { type:'FeatureCollection', features:[{ type:'Feature', geometry:j, properties:{} }] };
+    throw new Error('Unrecognized JSON');
+  }
+  const rows = parseCSV(t);
+  if (rows.length < 2) throw new Error('Empty file');
+  const h = rows[0].map(x => x.trim().toLowerCase());
+  const li = h.findIndex(x => /^(lat|latitude|y)$/.test(x)), oi = h.findIndex(x => /^(lon|lng|long|longitude|x)$/.test(x));
+  if (li < 0 || oi < 0) throw new Error('CSV needs lat and lon columns');
+  const features = [];
+  for (const r of rows.slice(1)) {
+    const la = parseFloat(r[li]), lo = parseFloat(r[oi]);
+    if (!Number.isFinite(la) || !Number.isFinite(lo)) continue;
+    const props = {}; rows[0].forEach((k, i) => { if (i !== li && i !== oi && r[i] !== undefined && r[i] !== '') props[k.trim()] = r[i]; });
+    features.push({ type:'Feature', geometry:{ type:'Point', coordinates:[lo, la] }, properties:props });
+  }
+  if (!features.length) throw new Error('No valid coordinates found');
+  return { type:'FeatureCollection', features };
+}
+const PALETTE = ['#e11d48', '#0ea5e9', '#16a34a', '#f59e0b', '#8b5cf6', '#14b8a6', '#f97316', '#ec4899'];
+function addStatic(name, fc) {
+  const d = { id:'u' + (++uCount), g:U, name:name.slice(0, 40), c:PALETTE[(uCount - 1) % PALETTE.length], type:'static', geom:'mix', r:5, fc:fc.features.map(f => ({ type:'Feature', geometry:f.geometry, properties:f.properties || {} })) };
+  LAYERS.push(d); mkRT(d);
+  collapsed.delete(U);
+  buildList();
+  setOn(d.id, true);
+  const b = L.geoJSON(fc).getBounds();
+  if (b.isValid()) map.fitBounds(b, { padding:[40, 40], maxZoom:17 });
+  toast(`Added ${d.fc.length} feature${d.fc.length === 1 ? '' : 's'} from ${d.name}`);
+}
+function removeStatic(id) {
+  setOn(id, false);
+  const i = LAYERS.findIndex(l => l.id === id); if (i >= 0) LAYERS.splice(i, 1);
+  delete RT[id]; buildList(); saveHash();
+}
+function exportGeo() {
+  const out = [];
+  for (const id of state.on) {
+    const rt = RT[id]; if (!rt || rt.def.type === 'tile') continue;
+    const feats = rt.def.type === 'static' ? rt.def.fc : rt.features;
+    feats.forEach(f => { if (!f.properties._fov) out.push({ type:'Feature', geometry:f.geometry, properties:Object.assign({ layer:rt.def.name }, f.properties) }); });
+  }
+  if (!out.length) return toast('Nothing to export yet. Turn on a layer and let it load.');
+  const blob = new Blob([JSON.stringify({ type:'FeatureCollection', features:out })], { type:'application/geo+json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'vantage-' + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '') + '.geojson';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast(`Exported ${out.length} features`);
+}
+
+/* ---------- search ---------- */
+let pin = null;
+function goTo(lat, lon, z, bbox) {
+  if (pin) map.removeLayer(pin);
+  pin = L.circleMarker([lat, lon], { radius:10, color:'#1d4ed8', weight:3, fillColor:'#fff', fillOpacity:.5, interactive:false }).addTo(map);
+  if (bbox) map.fitBounds(bbox, { maxZoom:18, animate:!reduceMotion });
+  else if (reduceMotion) map.setView([lat, lon], z); else map.flyTo([lat, lon], z, { duration:1.1 });
+}
+$('#search').addEventListener('submit', async e => {
+  e.preventDefault();
+  const v = $('#q').value.trim(); if (!v) return;
+  const res = $('#results');
+  const m = v.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (m) { const la = +m[1], lo = +m[2]; if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) { res.hidden = true; goTo(la, lo, 17); $('#q').blur(); return; } }
+  res.hidden = false; res.innerHTML = '<li class="none">Searching</li>';
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=' + encodeURIComponent(v));
+    if (!r.ok) throw new Error();
+    const list = await r.json();
+    if (!list.length) { res.innerHTML = '<li class="none">No match. Try a fuller address or a landmark name.</li>'; return; }
+    res.innerHTML = list.map((x, i) => `<li><button type="button" data-i="${i}">${esc(x.display_name)}</button></li>`).join('');
+    res.onclick = ev => {
+      const b = ev.target.closest('button'); if (!b) return;
+      const x = list[+b.dataset.i];
+      const bb = x.boundingbox ? L.latLngBounds([+x.boundingbox[0], +x.boundingbox[2]], [+x.boundingbox[1], +x.boundingbox[3]]) : null;
+      res.hidden = true; goTo(+x.lat, +x.lon, 16, bb && (bb.getNorth() - bb.getSouth() > 0.0004) ? bb : null);
+      $('#q').blur();
+    };
+  } catch { res.innerHTML = '<li class="none">Search is unavailable right now. Try coordinates like 40.7, -74.0.</li>'; }
+});
+$('#q').addEventListener('input', () => { if (!$('#q').value) $('#results').hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#results').hidden = true; });
+
+/* ---------- wiring ---------- */
+$('#layers').addEventListener('click', e => {
+  const rm = e.target.closest('[data-rm]'); if (rm) return removeStatic(rm.dataset.rm);
+  const row = e.target.closest('.row'); if (row) { const id = row.dataset.id; return setOn(id, !state.on.has(id)); }
+  const gh = e.target.closest('.gh');
+  if (gh) { const g = gh.parentElement; g.classList.toggle('shut'); const nm = g.dataset.g; g.classList.contains('shut') ? collapsed.add(nm) : collapsed.delete(nm); gh.setAttribute('aria-expanded', !g.classList.contains('shut')); }
+});
+$('#lf').addEventListener('input', e => {
+  const v = e.target.value.trim().toLowerCase();
+  $('#layers').classList.toggle('filtering', !!v);
+  document.querySelectorAll('.rw').forEach(r => { const l = RT[r.dataset.id].def; r.hidden = !!v && !(l.name + ' ' + (l.k || '') + ' ' + l.g).toLowerCase().includes(v); });
+  document.querySelectorAll('.grp').forEach(g => { g.hidden = ![...g.querySelectorAll('.rw')].some(r => !r.hidden); });
+});
+$('#base').innerHTML = Object.entries(BASEMAPS).map(([k, b]) => `<option value="${k}">${b.name}</option>`).join('');
+$('#base').addEventListener('change', e => { setBase(e.target.value); saveHash(); });
+$('#exp').addEventListener('click', exportGeo);
+$('#clr').addEventListener('click', () => { [...state.on].forEach(id => setOn(id, false)); });
+$('#zin').addEventListener('click', () => map.zoomIn());
+$('#zout').addEventListener('click', () => map.zoomOut());
+let me = null;
+$('#loc').addEventListener('click', () => {
+  if (!navigator.geolocation) return toast('This browser can’t share your location.');
+  navigator.geolocation.getCurrentPosition(p => {
+    const { latitude:la, longitude:lo, accuracy } = p.coords;
+    if (me) map.removeLayer(me);
+    me = L.circle([la, lo], { radius:accuracy, color:'#1d4ed8', weight:1, fillOpacity:.1, interactive:false }).addTo(map);
+    reduceMotion ? map.setView([la, lo], 16) : map.flyTo([la, lo], 16);
+  }, () => toast('Location is blocked. Allow it in your browser settings, or search an address.'), { enableHighAccuracy:true, timeout:10000 });
+});
+const dlg = $('#dlg');
+$('#imp').addEventListener('click', () => dlg.showModal());
+$('#dlgx').addEventListener('click', () => dlg.close());
+$('#pick').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { addStatic(f.name.replace(/\.[^.]+$/, ''), textToFC(await f.text())); dlg.close(); if (isMobile()) $('#panel').classList.remove('open'); }
+  catch (err) { toast('Could not read that file: ' + err.message); }
+  e.target.value = '';
+});
+$('#urlgo').addEventListener('click', async () => {
+  const u = $('#url').value.trim(); if (!u) return;
+  try {
+    const r = await fetch(u); if (!r.ok) throw new Error('HTTP ' + r.status);
+    addStatic(u.split('/').pop().replace(/\.[^.]+$/, '') || 'Remote data', textToFC(await r.text()));
+    $('#url').value = ''; dlg.close();
+  } catch (err) { toast('Could not load that link: ' + (err.message || 'blocked by CORS') + '. The host may not allow cross-origin requests.'); }
+});
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-copy]'); if (!b) return;
+  (navigator.clipboard ? navigator.clipboard.writeText(b.dataset.copy) : Promise.reject()).then(() => toast('Coordinates copied'), () => toast('Copy isn’t available here'));
+});
+const head = $('#head');
+const toggleSheet = () => { if (!isMobile()) return; const o = $('#panel').classList.toggle('open'); head.setAttribute('aria-expanded', o); };
+head.addEventListener('click', toggleSheet);
+head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSheet(); } });
+map.on('click', () => { if (isMobile()) { $('#panel').classList.remove('open'); head.setAttribute('aria-expanded', 'false'); } $('#results').hidden = true; });
+map.on('contextmenu', e => {
+  const la = e.latlng.lat.toFixed(6), lo = e.latlng.lng.toFixed(6);
+  L.popup({ maxWidth:300 }).setLatLng(e.latlng).setContent(`<div class="pop"><h3>${la}, ${lo}</h3><p class="sub">Dropped point</p><div class="acts">${linkSet(la, lo)}</div></div>`).openOn(map);
+});
+const refresh = debounce(() => state.on.forEach(id => ensure(RT[id])), 600);
+map.on('moveend', () => { refresh(); saveHash(); status(); });
+setInterval(() => { if (!document.hidden && state.on.has('aircraft')) ensure(RT.aircraft, true); }, 30000);
+
+/* ---------- boot ---------- */
+const hadHash = !!location.hash;
+LAYERS.forEach(mkRT);
+buildList();
+const h = readHash();
+const m = (h.map || '').split('/').map(Number);
+const start = m.length === 3 && m.every(Number.isFinite) ? { z:m[0], lat:m[1], lon:m[2] } : { z:15, lat:40.7359, lon:-73.9911 };
+map.setView([start.lat, start.lon], start.z);
+setBase(h.b && BASEMAPS[h.b] ? h.b : state.base);
+const initial = h.l !== undefined ? h.l.split(',').filter(id => RT[id]) : ['bike', 'signals', 'cams'];
+initial.forEach(id => setOn(id, true));
+status();
+if (!hadHash) toast('Tap layers to toggle them. Long-press the map for coordinates and street-level links.');
+})();
+</script>
+</body>
+</html>
