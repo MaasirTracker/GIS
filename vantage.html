@@ -196,6 +196,19 @@ const OVERPASS = [
   'https://overpass.private.coffee/api/interpreter'
 ];
 
+/* ---------- network helper ---------- */
+// Some embedded previews copy fetch options between frames and choke on the cancel signal (DataCloneError). Retry without it.
+async function xfetch(url, opts = {}) {
+  try { return await fetch(url, opts); }
+  catch (e) {
+    if (opts.signal && e && (e.name === 'DataCloneError' || /clone/i.test(e.message || ''))) {
+      const { signal, ...rest } = opts;
+      return fetch(url, rest);
+    }
+    throw e;
+  }
+}
+
 /* ---------- camera field-of-view helpers ---------- */
 const COMPASS = {N:0,NNE:22.5,NE:45,ENE:67.5,E:90,ESE:112.5,SE:135,SSE:157.5,S:180,SSW:202.5,SW:225,WSW:247.5,W:270,WNW:292.5,NW:315,NNW:337.5};
 function dirDeg(v) {
@@ -229,7 +242,7 @@ const camSum = p => {
 
 /* ---------- feed helpers ---------- */
 async function getJSON(url, sig) {
-  const r = await fetch(url, { signal: sig });
+  const r = await xfetch(url, { signal: sig });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
@@ -368,8 +381,8 @@ const LAYERS = [
 LAYERS.forEach(l => { l.type = l.type || 'op'; });
 
 const BASEMAPS = {
-  light:   { name:'Light',       url:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', o:{ subdomains:'abcd', maxNativeZoom:20, attribution:'© OpenStreetMap contributors © CARTO' } },
-  dark:    { name:'Dark',        url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',  o:{ subdomains:'abcd', maxNativeZoom:20, attribution:'© OpenStreetMap contributors © CARTO' } },
+  light:   { name:'Light',       url:'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', o:{ maxNativeZoom:16, attribution:'Esri, HERE, Garmin, © OpenStreetMap contributors' } },
+  dark:    { name:'Dark',        url:'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',  o:{ maxNativeZoom:16, attribution:'Esri, HERE, Garmin, © OpenStreetMap contributors' } },
   streets: { name:'Streets',     url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',                 o:{ maxNativeZoom:19, attribution:'© OpenStreetMap contributors' } },
   sat:     { name:'Satellite',   url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', o:{ maxNativeZoom:19, attribution:'Imagery © Esri, Maxar, Earthstar Geographics' } },
   topo:    { name:'Topographic', url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',               o:{ subdomains:'abc', maxNativeZoom:17, attribution:'© OpenStreetMap contributors, SRTM, © OpenTopoMap' } }
@@ -413,7 +426,7 @@ async function overpass(query, sig) {
   let last;
   for (const url of OVERPASS) {
     try {
-      const r = await fetch(url, { method:'POST', body:'data=' + encodeURIComponent(query), headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, signal:sig });
+      const r = await xfetch(url, { method:'POST', body:'data=' + encodeURIComponent(query), headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, signal:sig });
       if (!r.ok) throw new Error('Overpass returned ' + r.status);
       return await r.json();
     } catch (e) {
@@ -616,7 +629,7 @@ function setOn(id, on) {
 function saveHash() {
   const c = map.getCenter();
   const ids = [...state.on].filter(id => RT[id].def.type !== 'static').join(',');
-  history.replaceState(null, '', `#map=${map.getZoom()}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}&l=${ids}&b=${state.base}`);
+  try { history.replaceState(null, '', `#map=${map.getZoom()}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}&l=${ids}&b=${state.base}`); } catch (e) { /* sandboxed preview: skip saving the view */ }
 }
 function readHash() {
   const o = {};
@@ -718,7 +731,7 @@ $('#search').addEventListener('submit', async e => {
   if (m) { const la = +m[1], lo = +m[2]; if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) { res.hidden = true; goTo(la, lo, 17); $('#q').blur(); return; } }
   res.hidden = false; res.innerHTML = '<li class="none">Searching</li>';
   try {
-    const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=' + encodeURIComponent(v));
+    const r = await xfetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=' + encodeURIComponent(v));
     if (!r.ok) throw new Error();
     const list = await r.json();
     if (!list.length) { res.innerHTML = '<li class="none">No match. Try a fuller address or a landmark name.</li>'; return; }
@@ -777,7 +790,7 @@ $('#file').addEventListener('change', async e => {
 $('#urlgo').addEventListener('click', async () => {
   const u = $('#url').value.trim(); if (!u) return;
   try {
-    const r = await fetch(u); if (!r.ok) throw new Error('HTTP ' + r.status);
+    const r = await xfetch(u); if (!r.ok) throw new Error('HTTP ' + r.status);
     addStatic(u.split('/').pop().replace(/\.[^.]+$/, '') || 'Remote data', textToFC(await r.text()));
     $('#url').value = ''; dlg.close();
   } catch (err) { toast('Could not load that link: ' + (err.message || 'blocked by CORS') + '. The host may not allow cross-origin requests.'); }
